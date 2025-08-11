@@ -743,6 +743,15 @@ async def mcp_endpoint(request: Request):
 @app.post("/mcp-v1")
 async def mcp_v1_handler(request: Request):
     """Fully compliant MCP endpoint for ElevenLabs"""
+    # Accept any auth header - ElevenLabs sends their API key but we don't need to validate it
+    auth_header = request.headers.get("authorization", "")
+    api_key = request.headers.get("xi-api-key", "")
+    
+    # Just acknowledge the auth (ElevenLabs requires this)
+    if not auth_header and not api_key:
+        # Still allow requests without auth for testing
+        pass
+    
     try:
         body = await request.json()
         request_id = body.get("id", str(uuid.uuid4()))
