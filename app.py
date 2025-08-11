@@ -738,6 +738,150 @@ async def mcp_endpoint(request: Request):
                 }
             }
 
+# ========== MCP COMPLIANT ENDPOINT ==========
+
+@app.post("/mcp-v1")
+async def mcp_v1_handler(request: Request):
+    """Fully compliant MCP endpoint for ElevenLabs"""
+    try:
+        body = await request.json()
+        request_id = body.get("id", str(uuid.uuid4()))
+        method = body.get("method")
+        params = body.get("params", {})
+        
+        if method == "initialize":
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "0.1.0",
+                    "capabilities": {
+                        "tools": {}
+                    },
+                    "serverInfo": {
+                        "name": "mem0-server",
+                        "version": "1.0.0"
+                    }
+                }
+            })
+        
+        elif method == "tools/list":
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "tools": [
+                        {
+                            "name": "store_memory",
+                            "description": "Store important information from conversations",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "content": {
+                                        "type": "string",
+                                        "description": "The information to remember"
+                                    }
+                                },
+                                "required": ["content"]
+                            }
+                        }
+                    ]
+                }
+            })
+        
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            if tool_name == "store_memory":
+                content = arguments.get("content")
+                if content and mem0_client:
+                    # Store in Mem0
+                    now = datetime.now()
+                    metadata = {
+                        "category": "elevenlabs_mcp",
+                        "timestamp": now.isoformat(),
+                        "source": "mcp_v1"
+                    }
+                    
+                    result = mem0_client.add(
+                        messages=[{"role": "user", "content": content}],
+                        user_id=USER_ID,
+                        metadata=metadata
+                    )
+                    
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Memory stored successfully"
+                                }
+                            ]
+                        }
+                    })
+                
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "content parameter is required"
+                    }
+                })
+            
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Unknown tool: {tool_name}"
+                }
+            })
+        
+        else:
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Method not found: {method}"
+                }
+            })
+    
+    except Exception as e:
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": body.get("id") if "body" in locals() else None,
+            "error": {
+                "code": -32700,
+                "message": f"Parse error: {str(e)}"
+            }
+        })
+
+@app.get("/mcp-v1")
+async def mcp_v1_sse(request: Request):
+    """SSE endpoint for MCP v1"""
+    async def event_stream():
+        yield f"event: open\ndata: {json.dumps({'type': 'open'})}\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(30)
+            yield f": ping\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
 # ========== ELEVENLABS INTEGRATION ==========
 
 @app.get("/elevenlabs/config")
