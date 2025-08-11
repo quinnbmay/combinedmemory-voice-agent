@@ -446,19 +446,69 @@ async def mcp_options():
 
 @app.get("/mcp")
 async def mcp_sse_stream(request: Request):
-    """MCP SSE endpoint for ElevenLabs"""
+    """MCP SSE endpoint for ElevenLabs - handles both SSE stream and POST-like requests via query params"""
+    
+    # Allow ElevenLabs to connect (they send their API key, but we don't need to verify it)
+    # Just acknowledge any auth header they send
+    
+    # Check if this is a method call via query params (ElevenLabs might use this)
+    method = request.query_params.get("method")
+    if method:
+        request_id = request.query_params.get("id", "1")
+        
+        if method == "initialize":
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "0.1.0",
+                    "capabilities": {
+                        "tools": {"listChanged": True}
+                    },
+                    "serverInfo": {
+                        "name": "mem0-mcp",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+            return JSONResponse(content=response)
+        
+        elif method == "tools/list":
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "tools": [{
+                        "name": "store_memory",
+                        "description": "Store conversation memories in Mem0",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "The memory to store"
+                                }
+                            },
+                            "required": ["message"]
+                        }
+                    }]
+                }
+            }
+            return JSONResponse(content=response)
+    
+    # Default SSE stream behavior
     async def mcp_event_generator():
-        """Generate MCP protocol events"""
-        # Send initial MCP handshake
-        yield f"data: {json.dumps({'jsonrpc': '2.0', 'method': 'initialized', 'params': {}})}\n\n"
+        """Generate MCP protocol events in SSE format"""
+        # Send connection established
+        yield f"event: open\ndata: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
         
         # Keep connection alive
         while True:
             if await request.is_disconnected():
                 break
             await asyncio.sleep(30)
-            # Send heartbeat
-            yield f"data: {json.dumps({'jsonrpc': '2.0', 'method': 'ping', 'params': {}})}\n\n"
+            # Send heartbeat as comment
+            yield f": heartbeat\n\n"
     
     return StreamingResponse(
         mcp_event_generator(),
