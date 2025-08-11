@@ -513,9 +513,151 @@ async def sse_post_memory(request: Request):
     }
 
 @app.post("/mcp")
-async def mcp_post_memory(request: Request):
-    """MCP POST endpoint (alias for /sse)"""
-    return await sse_post_memory(request)
+async def mcp_endpoint(request: Request):
+    """MCP Protocol endpoint for ElevenLabs"""
+    try:
+        body = await request.json()
+        
+        # Check if this is an MCP protocol request
+        if "jsonrpc" in body:
+            # Handle MCP protocol
+            method = body.get("method")
+            params = body.get("params", {})
+            request_id = body.get("id", str(uuid.uuid4()))
+            
+            # Route MCP methods
+            if method == "initialize":
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "protocolVersion": "0.1.0",
+                        "capabilities": {
+                            "tools": {"listChanged": True}
+                        },
+                        "serverInfo": {
+                            "name": "mem0-mcp",
+                            "version": "1.0.0"
+                        }
+                    }
+                }
+            
+            elif method == "tools/list":
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "tools": [{
+                            "name": "store_memory",
+                            "description": "Store conversation memories",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "message": {
+                                        "type": "string",
+                                        "description": "Memory to store"
+                                    }
+                                },
+                                "required": ["message"]
+                            }
+                        }]
+                    }
+                }
+            
+            elif method == "tools/call":
+                tool_name = params.get("name")
+                arguments = params.get("arguments", {})
+                
+                if tool_name == "store_memory":
+                    message = arguments.get("message")
+                    
+                    if message and mem0_client:
+                        # Store in Mem0
+                        now = datetime.now()
+                        metadata = {
+                            "category": "mcp_memory",
+                            "day": now.strftime("%Y-%m-%d"),
+                            "month": now.strftime("%Y-%m"),
+                            "year": now.strftime("%Y"),
+                            "client": CLIENT,
+                            "project_type": PROJECT_TYPE,
+                            "device": "elevenlabs_mcp",
+                            "timestamp": now.isoformat()
+                        }
+                        
+                        result = mem0_client.add(
+                            messages=[{"role": "user", "content": message}],
+                            user_id=USER_ID,
+                            metadata=metadata
+                        )
+                        
+                        # Broadcast to SSE
+                        memory_event = {
+                            "id": str(uuid.uuid4()),
+                            "type": "mcp_memory",
+                            "message": message,
+                            "user_id": USER_ID,
+                            "timestamp": now.isoformat(),
+                            "stored": True
+                        }
+                        await broadcast_memory(memory_event)
+                        
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": request_id,
+                            "result": {
+                                "content": [{
+                                    "type": "text",
+                                    "text": f"Memory stored: {result.get('id', 'success')}"
+                                }]
+                            }
+                        }
+                    
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid params"
+                        }
+                    }
+                
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Unknown tool: {tool_name}"
+                    }
+                }
+            
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Method not found: {method}"
+                    }
+                }
+        
+        else:
+            # Fallback to SSE memory endpoint
+            return await sse_post_memory(request)
+            
+    except Exception as e:
+        # Try to handle as regular memory post
+        try:
+            return await sse_post_memory(request)
+        except:
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id") if "body" in locals() else None,
+                "error": {
+                    "code": -32700,
+                    "message": f"Parse error: {str(e)}"
+                }
+            }
 
 # ========== ELEVENLABS INTEGRATION ==========
 
