@@ -8,7 +8,7 @@ import os
 import json
 import asyncio
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from mem0 import MemoryClient
@@ -431,16 +431,45 @@ async def sse_stream(request: Request):
         }
     )
 
+@app.options("/mcp")
+async def mcp_options():
+    """Handle CORS preflight for MCP endpoint"""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-Id",
+            "Access-Control-Max-Age": "3600"
+        }
+    )
+
 @app.get("/mcp")
 async def mcp_sse_stream(request: Request):
-    """MCP SSE endpoint (alias for /sse)"""
+    """MCP SSE endpoint for ElevenLabs"""
+    async def mcp_event_generator():
+        """Generate MCP protocol events"""
+        # Send initial MCP handshake
+        yield f"data: {json.dumps({'jsonrpc': '2.0', 'method': 'initialized', 'params': {}})}\n\n"
+        
+        # Keep connection alive
+        while True:
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(30)
+            # Send heartbeat
+            yield f"data: {json.dumps({'jsonrpc': '2.0', 'method': 'ping', 'params': {}})}\n\n"
+    
     return StreamingResponse(
-        event_generator(),
+        mcp_event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization"
         }
     )
 
