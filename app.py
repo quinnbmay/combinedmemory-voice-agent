@@ -396,9 +396,43 @@ async def event_generator() -> AsyncGenerator[str, None]:
         if queue in active_connections:
             active_connections.remove(queue)
 
+@app.get("/.well-known/ai-plugin.json")
+async def openai_verification():
+    """OpenAI plugin verification endpoint"""
+    return {
+        "schema_version": "v1",
+        "name_for_human": "CombinedMemory Voice Agent",
+        "name_for_model": "combinedmemory_voice",
+        "description_for_human": "Voice AI assistant with memory capabilities",
+        "description_for_model": "Voice AI assistant with ElevenLabs and Mem0 integration for persistent memory",
+        "auth": {
+            "type": "none"
+        },
+        "api": {
+            "type": "openapi",
+            "url": "https://mcp.combinedmemory.com/openapi.json"
+        },
+        "logo_url": "https://mcp.combinedmemory.com/logo.png",
+        "contact_email": "quinn@maymarketingseo.com",
+        "legal_info_url": "https://combinedmemory.com/legal"
+    }
+
 @app.get("/sse")
 async def sse_stream(request: Request):
     """SSE endpoint for streaming memory updates"""
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+        }
+    )
+
+@app.get("/mcp")
+async def mcp_sse_stream(request: Request):
+    """MCP SSE endpoint (alias for /sse)"""
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -476,6 +510,11 @@ async def sse_post_memory(request: Request):
         "active_connections": len(active_connections),
         "timestamp": memory_event["timestamp"]
     }
+
+@app.post("/mcp")
+async def mcp_post_memory(request: Request):
+    """MCP POST endpoint (alias for /sse)"""
+    return await sse_post_memory(request)
 
 # ========== EXISTING ENDPOINTS ==========
 
