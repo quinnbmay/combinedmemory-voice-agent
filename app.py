@@ -37,6 +37,7 @@ USER_ID = os.environ.get('USER_ID', 'quinn_may')
 MEM0_API_KEY = os.environ.get('MEM0_API_KEY')
 AGENT_ID = os.environ.get('AGENT_ID', 'mem')
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY')
+ELEVENLABS_SERVER_ID = os.environ.get('ELEVENLABS_SERVER_ID', '74Vinci9jnFDyA4G6SUm')
 CLIENT = os.environ.get('MEM0_CLIENT', 'CombinedMemory.com')
 PROJECT_TYPE = os.environ.get('MEM0_PROJECT_TYPE', 'voice_ai_assistant')
 DEVICE = os.environ.get('MEM0_DEVICE', 'railway_deployment')
@@ -515,6 +516,72 @@ async def sse_post_memory(request: Request):
 async def mcp_post_memory(request: Request):
     """MCP POST endpoint (alias for /sse)"""
     return await sse_post_memory(request)
+
+# ========== ELEVENLABS INTEGRATION ==========
+
+@app.get("/elevenlabs/config")
+async def get_elevenlabs_config():
+    """Get ElevenLabs configuration"""
+    return {
+        "server_id": ELEVENLABS_SERVER_ID,
+        "api_key_configured": bool(ELEVENLABS_API_KEY),
+        "integration_status": "ready" if ELEVENLABS_API_KEY else "api_key_missing"
+    }
+
+@app.post("/elevenlabs/webhook")
+async def elevenlabs_webhook(request: Request):
+    """Webhook endpoint for ElevenLabs voice agent"""
+    data = await request.json()
+    
+    # Extract message from ElevenLabs
+    message = data.get("text", data.get("message", ""))
+    agent_id = data.get("agent_id", ELEVENLABS_SERVER_ID)
+    
+    if not message:
+        return {"status": "no_message"}
+    
+    # Store in Mem0
+    if mem0_client:
+        now = datetime.now()
+        metadata = {
+            "category": "elevenlabs_voice",
+            "day": now.strftime("%Y-%m-%d"),
+            "month": now.strftime("%Y-%m"),
+            "year": now.strftime("%Y"),
+            "client": CLIENT,
+            "project_type": "voice_agent",
+            "device": "elevenlabs",
+            "agent_id": agent_id,
+            "timestamp": now.isoformat()
+        }
+        
+        result = mem0_client.add(
+            messages=[{"role": "user", "content": message}],
+            user_id=USER_ID,
+            metadata=metadata
+        )
+        
+        # Broadcast to SSE
+        memory_event = {
+            "id": str(uuid.uuid4()),
+            "type": "elevenlabs_memory",
+            "message": message,
+            "agent_id": agent_id,
+            "user_id": USER_ID,
+            "timestamp": now.isoformat(),
+            "mem0_result": result,
+            "stored": True
+        }
+        
+        await broadcast_memory(memory_event)
+        
+        return {
+            "status": "stored",
+            "memory_id": result.get("id"),
+            "broadcast": True
+        }
+    
+    return {"status": "mem0_not_configured"}
 
 # ========== EXISTING ENDPOINTS ==========
 
