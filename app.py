@@ -234,7 +234,7 @@ async def root():
             <p>The MCP server is available at:</p>
             <div class="code">
                 POST /mcp - MCP JSON-RPC Protocol<br>
-                URL: https://mcp.combinedmemory.com:8080/mcp
+                URL: https://mcp.combinedmemory.com/mcp
             </div>
         </div>
 
@@ -385,7 +385,7 @@ async def root():
                         </div>
                         <div class="status-item">
                             <span>MCP Endpoint</span>
-                            <span class="badge success">https://mcp.combinedmemory.com:8080/mcp</span>
+                            <span class="badge success">https://mcp.combinedmemory.com/mcp</span>
                         </div>
                     </div>
                 `;
