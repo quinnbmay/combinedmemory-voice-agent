@@ -61,12 +61,12 @@ async def broadcast_memory(memory_data):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the web interface with SSE test"""
+    """Serve the web interface for MCP server"""
     return """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CombinedMemory Voice Agent</title>
+    <title>CombinedMemory MCP Server</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
@@ -180,14 +180,14 @@ async def root():
             font-size: 14px;
             overflow-x: auto;
         }
-        .sse-status {
+        .mcp-status {
             background: #f3f4f6;
             border: 2px solid #e5e7eb;
             padding: 15px;
             border-radius: 10px;
             margin: 20px 0;
         }
-        .sse-messages {
+        .mcp-messages {
             max-height: 200px;
             overflow-y: auto;
             background: #1f2937;
@@ -202,8 +202,8 @@ async def root():
 </head>
 <body>
     <div class="container">
-        <h1>🎙️ CombinedMemory Voice Agent</h1>
-        <p class="subtitle">Powered by ElevenLabs + Mem0 + SSE</p>
+        <h1>🧠 CombinedMemory MCP Server</h1>
+        <p class="subtitle">Powered by Mem0 + MCP Protocol</p>
         
         <div class="status">
             <h3>System Status</h3>
@@ -212,39 +212,39 @@ async def root():
                 <span class="badge success">Connected</span>
             </div>
             <div class="status-item">
-                <span>ElevenLabs Agent</span>
-                <span class="badge success">Configured</span>
+                <span>MCP Protocol</span>
+                <span class="badge success">v0.1.0</span>
             </div>
             <div class="status-item">
-                <span>SSE Endpoint</span>
-                <span id="sse-status" class="badge warning">Disconnected</span>
+                <span>MCP Endpoint</span>
+                <span id="mcp-status" class="badge success">Active</span>
             </div>
             <div class="status-item">
                 <span>User ID</span>
                 <span class="badge info">quinn_may</span>
             </div>
             <div class="status-item">
-                <span>Agent ID</span>
-                <span class="badge info">mem</span>
+                <span>Tools Available</span>
+                <span class="badge info">1</span>
             </div>
         </div>
 
         <div class="info-box">
-            <h3>📱 SSE Memory Stream</h3>
-            <p>The SSE endpoint is now available at:</p>
+            <h3>🔌 MCP Endpoint</h3>
+            <p>The MCP server is available at:</p>
             <div class="code">
-                GET /sse - Stream memory updates<br>
-                POST /sse - Push memory to stream
+                POST /mcp - MCP JSON-RPC Protocol<br>
+                URL: https://mcp.combinedmemory.com:8080/mcp
             </div>
         </div>
 
-        <div class="sse-status">
-            <h3>🔄 SSE Connection Test</h3>
-            <button class="btn btn-primary" onclick="connectSSE()">Connect to SSE Stream</button>
-            <button class="btn btn-secondary" onclick="testSSEPost()">Test POST to SSE</button>
-            <button class="btn btn-danger" onclick="disconnectSSE()">Disconnect SSE</button>
-            <div class="sse-messages" id="sse-messages">
-                SSE messages will appear here...
+        <div class="mcp-status">
+            <h3>🧪 MCP Protocol Tests</h3>
+            <button class="btn btn-primary" onclick="testMCPInitialize()">Test MCP Initialize</button>
+            <button class="btn btn-secondary" onclick="testMCPToolsList()">Test Tools List</button>
+            <button class="btn btn-secondary" onclick="testMCPStoreMemory()">Test Store Memory</button>
+            <div class="mcp-messages" id="mcp-messages">
+                MCP test results will appear here...
             </div>
         </div>
 
@@ -257,70 +257,93 @@ async def root():
     </div>
 
     <script>
-        let eventSource = null;
-
-        function connectSSE() {
-            if (eventSource) {
-                eventSource.close();
-            }
-            
-            const messagesDiv = document.getElementById('sse-messages');
-            messagesDiv.innerHTML = 'Connecting to SSE stream...\n';
-            
-            eventSource = new EventSource('/sse');
-            const statusBadge = document.getElementById('sse-status');
-            
-            eventSource.onopen = function(event) {
-                statusBadge.className = 'badge success';
-                statusBadge.textContent = 'Connected';
-                messagesDiv.innerHTML += 'Connected to SSE stream!\n';
-            };
-            
-            eventSource.onmessage = function(event) {
-                const timestamp = new Date().toLocaleTimeString();
-                messagesDiv.innerHTML += `[${timestamp}] ${event.data}\n`;
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            };
-            
-            eventSource.onerror = function(event) {
-                statusBadge.className = 'badge warning';
-                statusBadge.textContent = 'Error';
-                messagesDiv.innerHTML += 'SSE connection error!\n';
-            };
+        function logMessage(message) {
+            const messagesDiv = document.getElementById('mcp-messages');
+            const timestamp = new Date().toLocaleTimeString();
+            messagesDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        function disconnectSSE() {
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
-                const statusBadge = document.getElementById('sse-status');
-                statusBadge.className = 'badge warning';
-                statusBadge.textContent = 'Disconnected';
-                document.getElementById('sse-messages').innerHTML += 'Disconnected from SSE stream.\n';
-            }
-        }
-
-        async function testSSEPost() {
-            const messagesDiv = document.getElementById('sse-messages');
-            messagesDiv.innerHTML += 'Testing POST to /sse...\n';
+        async function testMCPInitialize() {
+            logMessage('Testing MCP Initialize...');
             
             try {
-                const response = await fetch('/sse', {
+                const response = await fetch('/mcp', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        message: 'Test memory from SSE POST endpoint',
-                        timestamp: new Date().toISOString()
+                        jsonrpc: '2.0',
+                        id: '1',
+                        method: 'initialize',
+                        params: {}
                     })
                 });
                 
                 const data = await response.json();
-                messagesDiv.innerHTML += `POST Response: ${JSON.stringify(data)}\n`;
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                logMessage(`✅ Initialize: ${JSON.stringify(data.result, null, 2)}`);
             } catch (error) {
-                messagesDiv.innerHTML += `POST Error: ${error}\n`;
+                logMessage(`❌ Initialize Error: ${error}`);
+            }
+        }
+
+        async function testMCPToolsList() {
+            logMessage('Testing MCP Tools List...');
+            
+            try {
+                const response = await fetch('/mcp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: '2',
+                        method: 'tools/list',
+                        params: {}
+                    })
+                });
+                
+                const data = await response.json();
+                logMessage(`✅ Tools: ${data.result.tools.length} tool(s) available`);
+                logMessage(`Tool: ${data.result.tools[0].name} - ${data.result.tools[0].description}`);
+            } catch (error) {
+                logMessage(`❌ Tools List Error: ${error}`);
+            }
+        }
+
+        async function testMCPStoreMemory() {
+            logMessage('Testing MCP Store Memory...');
+            
+            try {
+                const testMessage = `Test memory from MCP frontend at ${new Date().toISOString()}`;
+                const response = await fetch('/mcp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: '3',
+                        method: 'tools/call',
+                        params: {
+                            name: 'store_memory',
+                            arguments: {
+                                message: testMessage
+                            }
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.result) {
+                    logMessage(`✅ Memory Stored: ${data.result.content[0].text}`);
+                } else {
+                    logMessage(`❌ Store Error: ${JSON.stringify(data.error)}`);
+                }
+            } catch (error) {
+                logMessage(`❌ Store Memory Error: ${error}`);
             }
         }
 
@@ -359,6 +382,10 @@ async def root():
                         <div class="status-item">
                             <span>Recent Activity</span>
                             <span class="badge success">${data.recent_activity || 'Active'}</span>
+                        </div>
+                        <div class="status-item">
+                            <span>MCP Endpoint</span>
+                            <span class="badge success">https://mcp.combinedmemory.com:8080/mcp</span>
                         </div>
                     </div>
                 `;
