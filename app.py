@@ -225,7 +225,7 @@ async def root():
             </div>
             <div class="status-item">
                 <span>Tools Available</span>
-                <span class="badge info">1</span>
+                <span class="badge info">4</span>
             </div>
         </div>
 
@@ -653,20 +653,71 @@ async def mcp_endpoint(request: Request):
                     "jsonrpc": "2.0",
                     "id": request_id,
                     "result": {
-                        "tools": [{
-                            "name": "store_memory",
-                            "description": "Store conversation memories",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "message": {
-                                        "type": "string",
-                                        "description": "Memory to store"
+                        "tools": [
+                            {
+                                "name": "store_memory",
+                                "description": "Store conversation memories",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "description": "Memory to store"
+                                        }
+                                    },
+                                    "required": ["message"]
+                                }
+                            },
+                            {
+                                "name": "search_memory",
+                                "description": "Search through stored memories",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "query": {
+                                            "type": "string",
+                                            "description": "Search query to find relevant memories"
+                                        },
+                                        "limit": {
+                                            "type": "integer",
+                                            "description": "Maximum number of results to return (default: 5)",
+                                            "minimum": 1,
+                                            "maximum": 20
+                                        }
+                                    },
+                                    "required": ["query"]
+                                }
+                            },
+                            {
+                                "name": "get_all_memories",
+                                "description": "Retrieve all memories for the user",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "limit": {
+                                            "type": "integer",
+                                            "description": "Maximum number of memories to return (default: 10)",
+                                            "minimum": 1,
+                                            "maximum": 50
+                                        }
                                     }
-                                },
-                                "required": ["message"]
+                                }
+                            },
+                            {
+                                "name": "delete_memory",
+                                "description": "Delete a specific memory by ID",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "memory_id": {
+                                            "type": "string",
+                                            "description": "ID of the memory to delete"
+                                        }
+                                    },
+                                    "required": ["memory_id"]
+                                }
                             }
-                        }]
+                        ]
                     }
                 }
             
@@ -725,6 +776,142 @@ async def mcp_endpoint(request: Request):
                         "error": {
                             "code": -32602,
                             "message": "Invalid params"
+                        }
+                    }
+                
+                elif tool_name == "search_memory":
+                    query = arguments.get("query")
+                    limit = arguments.get("limit", 5)
+                    
+                    if query and mem0_client:
+                        try:
+                            results = mem0_client.search(
+                                query=query,
+                                user_id=USER_ID,
+                                limit=min(limit, 20)
+                            )
+                            
+                            if results:
+                                memories_text = "\n".join([
+                                    f"• {result['memory']}" for result in results[:limit]
+                                ])
+                                response_text = f"Found {len(results)} memories:\n{memories_text}"
+                            else:
+                                response_text = "No memories found matching your query."
+                            
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": {
+                                    "content": [{
+                                        "type": "text",
+                                        "text": response_text
+                                    }]
+                                }
+                            }
+                        except Exception as e:
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "error": {
+                                    "code": -32603,
+                                    "message": f"Search error: {str(e)}"
+                                }
+                            }
+                    
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Query parameter is required"
+                        }
+                    }
+                
+                elif tool_name == "get_all_memories":
+                    limit = arguments.get("limit", 10)
+                    
+                    if mem0_client:
+                        try:
+                            # Get all memories for the user
+                            results = mem0_client.get_all(
+                                user_id=USER_ID
+                            )
+                            
+                            # Limit the results
+                            results = results[:min(limit, 50)]
+                            
+                            if results:
+                                memories_text = "\n".join([
+                                    f"• [{result.get('id', 'unknown')}] {result['memory']}" 
+                                    for result in results[:limit]
+                                ])
+                                response_text = f"Retrieved {len(results)} memories:\n{memories_text}"
+                            else:
+                                response_text = "No memories found."
+                            
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": {
+                                    "content": [{
+                                        "type": "text",
+                                        "text": response_text
+                                    }]
+                                }
+                            }
+                        except Exception as e:
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "error": {
+                                    "code": -32603,
+                                    "message": f"Retrieval error: {str(e)}"
+                                }
+                            }
+                    
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32603,
+                            "message": "Memory client not configured"
+                        }
+                    }
+                
+                elif tool_name == "delete_memory":
+                    memory_id = arguments.get("memory_id")
+                    
+                    if memory_id and mem0_client:
+                        try:
+                            result = mem0_client.delete(memory_id=memory_id)
+                            
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": {
+                                    "content": [{
+                                        "type": "text",
+                                        "text": f"Memory {memory_id} deleted successfully"
+                                    }]
+                                }
+                            }
+                        except Exception as e:
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "error": {
+                                    "code": -32603,
+                                    "message": f"Delete error: {str(e)}"
+                                }
+                            }
+                    
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Memory ID parameter is required"
                         }
                     }
                 
